@@ -25,6 +25,8 @@ type RawTLSAssets struct {
 	WorkerKey     []byte
 	AdminCert     []byte
 	AdminKey      []byte
+	EdgeCert      []byte
+	EdgeKey       []byte
 }
 
 // PEM -> gzip -> base64 encoded TLS assets.
@@ -37,18 +39,20 @@ type CompactTLSAssets struct {
 	WorkerKey     string
 	AdminCert     string
 	AdminKey      string
+	EdgeCert      string
+	EdgeKey       string
 }
 
 func (c *Cluster) NewTLSAssets() (*RawTLSAssets, error) {
 	// Generate keys for the various components.
-	keys := make([]*rsa.PrivateKey, 4)
+	keys := make([]*rsa.PrivateKey, 5)
 	var err error
 	for i := range keys {
 		if keys[i], err = tlsutil.NewPrivateKey(); err != nil {
 			return nil, err
 		}
 	}
-	caKey, apiServerKey, workerKey, adminKey := keys[0], keys[1], keys[2], keys[3]
+	caKey, apiServerKey, workerKey, adminKey, edgeKey := keys[0], keys[1], keys[2], keys[3], keys[4]
 
 	caConfig := tlsutil.CACertConfig{
 		CommonName:   "kube-ca",
@@ -105,15 +109,25 @@ func (c *Cluster) NewTLSAssets() (*RawTLSAssets, error) {
 		return nil, err
 	}
 
+	edgeConfig := tlsutil.ClientCertConfig{
+		CommonName: "kube-edge",
+	}
+	edgeCert, err := tlsutil.NewSignedClientCertificate(edgeConfig, edgeKey, caCert, caKey)
+	if err != nil {
+		return nil, err
+	}
+
 	return &RawTLSAssets{
 		CACert:        tlsutil.EncodeCertificatePEM(caCert),
 		APIServerCert: tlsutil.EncodeCertificatePEM(apiServerCert),
 		WorkerCert:    tlsutil.EncodeCertificatePEM(workerCert),
 		AdminCert:     tlsutil.EncodeCertificatePEM(adminCert),
+		EdgeCert:      tlsutil.EncodeCertificatePEM(EdgeCert),
 		CAKey:         tlsutil.EncodePrivateKeyPEM(caKey),
 		APIServerKey:  tlsutil.EncodePrivateKeyPEM(apiServerKey),
 		WorkerKey:     tlsutil.EncodePrivateKeyPEM(workerKey),
 		AdminKey:      tlsutil.EncodePrivateKeyPEM(adminKey),
+		EdgeKey:       tlsutil.EncodePrivateKeyPEM(EdgeKey),
 	}, nil
 }
 
@@ -127,6 +141,7 @@ func ReadTLSAssets(dirname string) (*RawTLSAssets, error) {
 		{"apiserver", &r.APIServerCert, &r.APIServerKey},
 		{"worker", &r.WorkerCert, &r.WorkerKey},
 		{"admin", &r.AdminCert, &r.AdminKey},
+		{"edge", &r.EdgeCert, &r.EdgeKey},
 	}
 	for _, file := range files {
 		certPath := filepath.Join(dirname, file.name+".pem")
@@ -155,6 +170,7 @@ func (r *RawTLSAssets) WriteToDir(dirname string) error {
 		{"apiserver", r.APIServerCert, r.APIServerKey},
 		{"worker", r.WorkerCert, r.WorkerKey},
 		{"admin", r.AdminCert, r.AdminKey},
+		{"edge", r.EdgeCert, r.EdgeKey},
 	}
 	for _, asset := range assets {
 		certPath := filepath.Join(dirname, asset.name+".pem")
@@ -218,6 +234,8 @@ func (r *RawTLSAssets) compact(cfg *Config, kmsSvc encryptService) (*CompactTLSA
 		WorkerKey:     compact(r.WorkerKey),
 		AdminCert:     compact(r.AdminCert),
 		AdminKey:      compact(r.AdminKey),
+		EdgeCert:      compact(r.EdgeCert),
+		EdgeKey:       compact(r.EdgeKey),
 	}
 	if err != nil {
 		return nil, err
