@@ -122,12 +122,12 @@ func (c *Cluster) NewTLSAssets() (*RawTLSAssets, error) {
 		APIServerCert: tlsutil.EncodeCertificatePEM(apiServerCert),
 		WorkerCert:    tlsutil.EncodeCertificatePEM(workerCert),
 		AdminCert:     tlsutil.EncodeCertificatePEM(adminCert),
-		EdgeCert:      tlsutil.EncodeCertificatePEM(EdgeCert),
+		EdgeCert:      tlsutil.EncodeCertificatePEM(edgeCert),
 		CAKey:         tlsutil.EncodePrivateKeyPEM(caKey),
 		APIServerKey:  tlsutil.EncodePrivateKeyPEM(apiServerKey),
 		WorkerKey:     tlsutil.EncodePrivateKeyPEM(workerKey),
 		AdminKey:      tlsutil.EncodePrivateKeyPEM(adminKey),
-		EdgeKey:       tlsutil.EncodePrivateKeyPEM(EdgeKey),
+		EdgeKey:       tlsutil.EncodePrivateKeyPEM(edgeKey),
 	}, nil
 }
 
