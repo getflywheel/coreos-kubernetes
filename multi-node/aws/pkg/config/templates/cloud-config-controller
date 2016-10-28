@@ -205,6 +205,24 @@ write_files:
           -d"$(cat /srv/kubernetes/manifests/$manifest)" \
           "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
       done
+      # Custom replication controllers
+      for manifest in {kibana-logging,elasticsearch-logging}-rc.json;do
+          /usr/bin/curl  -H "Content-Type: application/json" -XPOST \
+          -d @"/srv/kubernetes/manifests/$manifest" \
+          "http://127.0.0.1:8080/api/v1/namespaces/kube-system/replicationcontrollers"
+      done
+
+      # Custom services
+      for manifest in {elasticsearch-logging,kibana-logging}-svc.json;do
+          /usr/bin/curl  -H "Content-Type: application/json" -XPOST \
+          -d @"/srv/kubernetes/manifests/$manifest" \
+          "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
+      done
+
+      # Custom daemon sets
+      /usr/bin/curl  -H "Content-Type: application/json" -XPOST \
+      -d @"/srv/kubernetes/manifests/fluentd-cloud-logging-ds.json" \
+      "http://127.0.0.1:8080/apis/extensions/v1beta1/namespaces/kube-system/daemonsets"
 
   - path: /etc/kubernetes/cni/docker_opts_cni.env
     content: |
@@ -471,6 +489,265 @@ write_files:
           }
         }
 {{ end }}
+
+  - path: /srv/kubernetes/manifests/elasticsearch-logging-rc.json
+    content: |
+        {
+          "apiVersion": "v1",
+          "kind": "ReplicationController",
+          "metadata": {
+            "name": "elasticsearch-logging-v1",
+            "namespace": "kube-system",
+            "labels": {
+              "k8s-app": "elasticsearch-logging",
+              "version": "v1",
+              "kubernetes.io/cluster-service": "true"
+            }
+          },
+          "spec": {
+            "replicas": 2,
+            "selector": {
+              "k8s-app": "elasticsearch-logging",
+              "version": "v1"
+            },
+            "template": {
+              "metadata": {
+                "labels": {
+                  "k8s-app": "elasticsearch-logging",
+                  "version": "v1",
+                  "kubernetes.io/cluster-service": "true"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "image": "gcr.io/google_containers/elasticsearch:1.8",
+                    "name": "elasticsearch-logging",
+                    "resources": {
+                      "limits": {
+                        "cpu": "100m"
+                      },
+                      "requests": {
+                        "cpu": "100m"
+                      }
+                    },
+                    "ports": [
+                      {
+                        "containerPort": 9200,
+                        "name": "db",
+                        "protocol": "TCP"
+                      },
+                      {
+                        "containerPort": 9300,
+                        "name": "transport",
+                        "protocol": "TCP"
+                      }
+                    ],
+                    "volumeMounts": [
+                      {
+                        "name": "es-persistent-storage",
+                        "mountPath": "/data"
+                      }
+                    ]
+                  }
+                ],
+                "volumes": [
+                  {
+                    "name": "es-persistent-storage",
+                    "emptyDir": {
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+
+  - path: /srv/kubernetes/manifests/kibana-logging-rc.json
+    content: |
+        {
+          "apiVersion": "v1",
+          "kind": "ReplicationController",
+          "metadata": {
+            "name": "kibana-logging-v1",
+            "namespace": "kube-system",
+            "labels": {
+              "k8s-app": "kibana-logging",
+              "version": "v1",
+              "kubernetes.io/cluster-service": "true"
+            }
+          },
+          "spec": {
+            "replicas": 1,
+            "selector": {
+              "k8s-app": "kibana-logging",
+              "version": "v1"
+            },
+            "template": {
+              "metadata": {
+                "labels": {
+                  "k8s-app": "kibana-logging",
+                  "version": "v1",
+                  "kubernetes.io/cluster-service": "true"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "kibana-logging",
+                    "image": "gcr.io/google_containers/kibana:1.3",
+                    "resources": {
+                      "limits": {
+                        "cpu": "100m"
+                      },
+                      "requests": {
+                        "cpu": "100m"
+                      }
+                    },
+                    "env": [
+                      {
+                        "name": "ELASTICSEARCH_URL",
+                        "value": "http://elasticsearch-logging:9200"
+                      }
+                    ],
+                    "ports": [
+                      {
+                        "containerPort": 5601,
+                        "name": "ui",
+                        "protocol": "TCP"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+
+  - path: /srv/kubernetes/manifests/elasticsearch-logging-svc.json
+    content: |
+        {
+          "apiVersion": "v1",
+          "kind": "Service",
+          "metadata": {
+            "name": "elasticsearch-logging",
+            "namespace": "kube-system",
+            "labels": {
+              "k8s-app": "elasticsearch-logging",
+              "kubernetes.io/cluster-service": "true",
+              "kubernetes.io/name": "Elasticsearch"
+            }
+          },
+          "spec": {
+            "ports": [
+              {
+                "port": 9200,
+                "protocol": "TCP",
+                "targetPort": "db"
+              }
+            ],
+            "selector": {
+              "k8s-app": "elasticsearch-logging"
+            }
+          }
+        }
+
+
+  - path: /srv/kubernetes/manifests/kibana-logging-svc.json
+    content: |
+        {
+          "apiVersion": "v1",
+          "kind": "Service",
+          "metadata": {
+            "name": "kibana-logging",
+            "namespace": "kube-system",
+            "labels": {
+              "k8s-app": "kibana-logging",
+              "kubernetes.io/cluster-service": "true",
+              "kubernetes.io/name": "Kibana"
+            }
+          },
+          "spec": {
+            "ports": [
+              {
+                "port": 5601,
+                "protocol": "TCP",
+                "targetPort": "ui"
+              }
+            ],
+            "selector": {
+              "k8s-app": "kibana-logging"
+            }
+          }
+        }
+
+  - path: /srv/kubernetes/manifests/fluentd-cloud-logging-ds.json
+    content: |
+        {
+          "apiVersion": "extensions/v1beta1",
+          "kind": "DaemonSet",
+          "metadata": {
+            "name": "fluent-elasticsearch",
+            "namespace": "kube-system",
+            "labels": {
+              "k8s-app": "fluentd-logging"
+            }
+          },
+          "spec": {
+            "template": {
+              "metadata": {
+                "name": "fluentd-elasticsearch",
+                "namespace": "kube-system",
+                "labels": {
+                  "k8s-app": "fluentd-logging"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "fluentd-elasticsearch",
+                    "image": "gcr.io/google_containers/fluentd-elasticsearch:1.15",
+                    "resources": {
+                      "limits": {
+                        "memory": "200Mi"
+                      },
+                      "requests": {
+                        "cpu": "100m",
+                        "memory": "200Mi"
+                      }
+                    },
+                    "volumeMounts": [
+                      {
+                        "name": "varlog",
+                        "mountPath": "/var/log"
+                      },
+                      {
+                        "name": "varlibdockercontainers",
+                        "mountPath": "/var/lib/docker/containers",
+                        "readOnly": true
+                      }
+                    ]
+                  }
+                ],
+                "terminationGracePeriodSeconds": 30,
+                "volumes": [
+                  {
+                    "name": "varlog",
+                    "hostPath": {
+                      "path": "/var/log"
+                    }
+                  },
+                  {
+                    "name": "varlibdockercontainers",
+                    "hostPath": {
+                      "path": "/var/lib/docker/containers"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
 
   - path: /srv/kubernetes/manifests/kube-dns-rc.yaml
     content: |
